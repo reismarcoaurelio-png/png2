@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<title>Simplex KKT - Interativo Corrigido (IDs namespaced)</title>
+<title>Simplex KKT - Interativo Corrigido (linha pivot em branco)</title>
 <style>
   body { font-family: Arial, Helvetica, sans-serif; padding:18px; background:#f6f9fc; color:#0b2545; }
   h1{margin-bottom:6px;}
@@ -22,7 +22,7 @@
   .note{font-size:13px;color:#334155;margin-top:8px}
   #finalScore{font-weight:bold;margin-top:12px}
   .pane{background:#fff;padding:12px;border-radius:8px;box-shadow:0 6px 18px rgba(11,37,69,0.06);margin-bottom:12px}
-  .small{font-size:13px;color:#334155}
+  .small{font-size:13px;color:#334155'}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
 </style>
 </head>
@@ -75,31 +75,31 @@ function fmt(x){ return (Math.abs(x)<1e-12)?'0':Number(x).toFixed(6); }
 // globals
 let n=2, m=1;
 let varNames=[];
-let base=[], A=[], b=[], autoIterations=[]; // autoIterations: {base,A,b,pivot}
+let base=[], A=[], b=[], autoIterations=[];
 let currentIter=0, score=0, totalChecks=0;
 let studentName='';
 
-// build var names: x1..xn, x_{n+1}..x_{n+m} (folgas), y1..yn, y_{n+1}..y_{n+m}
+// build var names: x1..xn (originais), x{n+1}..x{n+m} (folgas), y1..yn, y{n+1}..y{n+m}
 function buildVarNames(n,m){
   const names=[];
   for(let i=1;i<=n;i++) names.push('x'+i);
-  for(let k=1;k<=m;k++) names.push('x'+(n+k)); // folgas como x_{n+1}...
+  for(let k=1;k<=m;k++) names.push('x'+(n+k));
   for(let i=1;i<=n;i++) names.push('y'+i);
   for(let k=1;k<=m;k++) names.push('y'+(n+k));
   return names;
 }
 
-// generate dynamic form
+// generateForm
 function generateForm(){
   n = Math.max(1, Math.floor(numFrom('input_n',2)));
   m = Math.max(1, Math.floor(numFrom('input_m',1)));
   const container = document.getElementById('dynamicForm');
   container.innerHTML = '';
 
-  // FO
-  const foCard = document.createElement('div'); foCard.className = 'card';
+  // FO card
+  const foCard = document.createElement('div'); foCard.className='card';
   foCard.innerHTML = `<div class="small"><strong>Função objetivo (maximizar) — termos quadráticos e lineares</strong></div>`;
-  const grid = document.createElement('div'); grid.className = 'grid';
+  const grid = document.createElement('div'); grid.className='grid';
 
   for(let i=1;i<=n;i++){
     const id = `c_x${i}sq`;
@@ -127,15 +127,14 @@ function generateForm(){
   foCard.appendChild(grid);
   container.appendChild(foCard);
 
-  // restraints
-  const restrCard = document.createElement('div'); restrCard.className = 'card';
+  // restrictions
+  const restrCard = document.createElement('div'); restrCard.className='card';
   restrCard.innerHTML = `<div class="small"><strong>Restrições lineares (≤)</strong></div>`;
   const tbl = document.createElement('table');
   let thead = `<tr><th>Restrição</th>`;
-  for(let j=1;j<=n;j++) thead += `<th>a${j}</th>`;
+  for(let j=1;j<=n;j++) thead+=`<th>a${j}</th>`;
   thead += `<th>b</th></tr>`;
   tbl.innerHTML = thead;
-
   for(let k=1;k<=m;k++){
     const tr = document.createElement('tr');
     let rowHtml = `<td>r${k}</td>`;
@@ -149,12 +148,11 @@ function generateForm(){
   restrCard.appendChild(tbl);
   container.appendChild(restrCard);
 
-  const note = document.createElement('div'); note.className='note';
-  note.innerHTML = 'Observação: as restrições xᵢ ≥ 0 são implícitas.';
+  const note = document.createElement('div'); note.className='note'; note.innerHTML='Observação: as restrições xᵢ ≥ 0 são implícitas.';
   container.appendChild(note);
 }
 
-// montar problema -> constrói A e b KKT
+// montarProblema -> KKT
 function montarProblema(){
   const c_x = new Array(n+1).fill(0);
   const c_x_sq = new Array(n+1).fill(0);
@@ -170,9 +168,8 @@ function montarProblema(){
   }
 
   varNames = buildVarNames(n,m);
-
   base = [];
-  for(let k=1;k<=m;k++) base.push('x'+(n+k)); // folgas: x_{n+1}...
+  for(let k=1;k<=m;k++) base.push('x'+(n+k));
   for(let i=1;i<=n;i++) base.push('y'+i);
 
   const rows = n + m;
@@ -185,7 +182,7 @@ function montarProblema(){
   const off_y1 = n + m;
   const off_y2 = n + m + n;
 
-  // primeiras m linhas: restrições primais
+  // primeras m linhas: restrições
   for(let k=1;k<=m;k++){
     const r = k-1;
     for(let j=1;j<=n;j++) A[r][off_x + (j-1)] = a[k][j];
@@ -211,14 +208,9 @@ function montarProblema(){
   return {A,b};
 }
 
-// save iter with pivot info
+// save iteration with pivot info
 function saveAutoIteration(pivotInfo=null){
-  autoIterations.push({
-    base: base.slice(),
-    A: A.map(r=>r.slice()),
-    b: b.slice(),
-    pivot: pivotInfo
-  });
+  autoIterations.push({ base: base.slice(), A: A.map(r=>r.slice()), b: b.slice(), pivot: pivotInfo });
 }
 
 // pivot
@@ -236,7 +228,7 @@ function pivot(row,col){
   saveAutoIteration({row: row, col: col});
 }
 
-// entering variable (mesma lógica)
+// enteringVar (mesma regra)
 function enteringVar(){
   let minVal = 0, row = -1;
   for(let i=0;i<b.length;i++){
@@ -251,7 +243,7 @@ function enteringVar(){
 
 function isOptimal(){ return b.every(v => v >= -1e-9); }
 
-// solve automatic
+// solveAutomatic
 function solveAutomatic(){
   montarProblema();
   autoIterations = [];
@@ -263,8 +255,7 @@ function solveAutomatic(){
   }
 }
 
-// RENDER: anterior (read-only) + atual (apenas linha do pivot editável)
-// ATENÇÃO: ids de inputs desta área são namespaced com "iter_..." para NÃO conflitar com dynamicForm
+// RENDER: mostra anterior (referência) e pro próximo tableau apresenta a linha pivot EM BRANCO (o aluno preenche)
 function renderStudentIteration(idx){
   const area = document.getElementById('iterationsArea');
   area.style.display = 'block';
@@ -280,7 +271,7 @@ function renderStudentIteration(idx){
   const pivotInfo = curr.pivot;
   const pRow = pivotInfo ? pivotInfo.row : null;
 
-  // tabela anterior (read-only)
+  // tabela de referência (anterior)
   const tblPrev = document.createElement('table'); tblPrev.className = 'prevTable';
   tblPrev.innerHTML = `<caption>Iteração ${idx} (anterior - referência)</caption>`;
   let trh = document.createElement('tr');
@@ -296,26 +287,30 @@ function renderStudentIteration(idx){
   }
   area.appendChild(tblPrev);
 
-  // tabela atual (aluno preenche apenas linha pRow)
+  // tabela atual: mostramos como a próxima iteração ficará, mas o aluno só preenche a linha pivot.
   const tbl = document.createElement('table');
   tbl.innerHTML = `<caption>Iteração ${idx+1} (preencha somente a linha do pivot indicada)</caption>`;
   trh = document.createElement('tr');
   trh.innerHTML = '<th>Base</th>' + varNames.map(v=>`<th>${v}</th>`).join('') + '<th>b</th>';
   tbl.appendChild(trh);
+
   for(let r=0;r<curr.base.length;r++){
     const tr = document.createElement('tr');
+    // base input (namespaced)
     let rowHtml = `<td><input id="iter_base_${r}" type="text" value=""></td>`;
     for(let j=0;j<varNames.length;j++){
       if(r === pRow){
+        // linha que o aluno preencherá: EM BRANCO (sem mostrar solução)
         rowHtml += `<td><input id="iter_cell_${r}_${j}" type="text" value=""></td>`;
       } else {
-        rowHtml += `<td><input type="text" value="${fmt(curr.A[r][j])}" readonly></td>`;
+        // mostramos a referêcia (iteração anterior) como read-only — NÃO mostramos a solução final
+        rowHtml += `<td><input type="text" value="${fmt(prev.A[r][j])}" readonly></td>`;
       }
     }
     if(r === pRow){
       rowHtml += `<td><input id="iter_b_${r}" type="text" value=""></td>`;
     } else {
-      rowHtml += `<td><input type="text" value="${fmt(curr.b[r])}" readonly></td>`;
+      rowHtml += `<td><input type="text" value="${fmt(prev.b[r])}" readonly></td>`;
     }
     tr.innerHTML = rowHtml;
     tbl.appendChild(tr);
@@ -324,7 +319,7 @@ function renderStudentIteration(idx){
 
   const note = document.createElement('div'); note.className='note';
   if(pRow === null) note.innerText = 'Nenhum pivot — problema ótimo.';
-  else note.innerText = `Preencha a linha ${pRow+1} (linha do pivot).`;
+  else note.innerText = `Preencha a linha ${pRow+1} (linha do pivot). Apenas essa linha deve ser preenchida.`;
   area.appendChild(note);
 
   const btn = document.createElement('button'); btn.innerText = 'Verificar Iteração';
@@ -334,7 +329,7 @@ function renderStudentIteration(idx){
   document.getElementById('restart').style.display = 'inline-block';
 }
 
-// checkIteration: compara somente a linha "iter_cell_*" e "iter_b_*" e "iter_base_*"
+// checkIteration compara apenas iter_* da linha pivot
 function checkIteration(idx){
   if(idx <= 0 || idx >= autoIterations.length) return;
   const curr = autoIterations[idx];
@@ -348,13 +343,13 @@ function checkIteration(idx){
   const pRow = pivotInfo.row;
   let correct = true;
 
-  // base da linha pivot
+  // base
   const baseEl = document.getElementById(`iter_base_${pRow}`);
   const baseVal = (baseEl.value||'').trim();
   baseEl.classList.remove('incorrect');
   if(baseVal !== curr.base[pRow]){ baseEl.classList.add('incorrect'); correct = false; }
 
-  // checa cada coluna da linha pivot
+  // colunas da linha pivot
   for(let j=0;j<varNames.length;j++){
     const el = document.getElementById(`iter_cell_${pRow}_${j}`);
     if(!el){ correct = false; continue; }
@@ -368,7 +363,7 @@ function checkIteration(idx){
     }
   }
 
-  // checa b do pivot
+  // b pivot
   const bEl = document.getElementById(`iter_b_${pRow}`); bEl.classList.remove('incorrect');
   let rawb = (bEl.value||'').trim();
   let bv = NaN;
@@ -379,38 +374,49 @@ function checkIteration(idx){
   totalChecks++;
   if(correct) score++;
 
-  const fb = document.getElementById('feedback'); fb.style.display='block';
+  const fb = document.getElementById('feedback');
+  fb.style.display = 'block';
   if(correct){
-    fb.className='status ok'; fb.innerText = '✅ Iteração correta!';
+    fb.className = 'status ok';
+    fb.innerText = '✅ Iteração correta!';
     currentIter++;
-    if(currentIter < autoIterations.length) renderStudentIteration(currentIter);
-    else {
+    if(currentIter < autoIterations.length){
+      renderStudentIteration(currentIter);
+    } else {
       const nota = totalChecks ? Math.round(100 * score / totalChecks) : 0;
       fb.innerText = `✅ Todas as iterações preenchidas. Nota final: ${nota}/100`;
       document.getElementById('finalScore').innerText = `Nota final: ${nota}/100`;
       document.getElementById('generatePDF').style.display = 'inline-block';
     }
   } else {
-    fb.className='status err'; fb.innerText = '❌ Iteração incorreta. Revise as células em vermelho.';
+    fb.className = 'status err';
+    fb.innerText = '❌ Iteração incorreta. Revise as células em vermelho.';
   }
 }
 
 // events
-document.getElementById('genForm').addEventListener('click', generateForm);
+document.getElementById('genForm').addEventListener('click', ()=>{
+  // limpar estados antigos ao gerar novo formulário
+  autoIterations = []; A = []; b = []; base = []; currentIter = 0; score = 0; totalChecks = 0;
+  document.getElementById('iterationsArea').innerHTML = '';
+  document.getElementById('feedback').style.display = 'none';
+  document.getElementById('finalScore').innerText = '';
+  document.getElementById('generatePDF').style.display = 'none';
+  generateForm();
+});
 
 document.getElementById('start').addEventListener('click', ()=>{
   studentName = document.getElementById('studentName').value.trim() || 'Aluno(a) não informado(a)';
   montarProblema();
-  solveAutomatic();
+  solveAutomatic(); // popula autoIterations
   score = 0; totalChecks = 0;
   if(autoIterations.length <= 1){
-    document.getElementById('iterationsArea').style.display='block';
+    document.getElementById('iterationsArea').style.display = 'block';
     document.getElementById('iterationsArea').innerHTML = '<div class="note">Problema já ótimo — não há iterações para preencher.</div>';
-    // grade zero (no attempts)
     document.getElementById('generatePDF').style.display = 'inline-block';
     return;
   }
-  currentIter = 1;
+  currentIter = 1; // começa pela primeira iteração resultante do primeiro pivot
   document.getElementById('feedback').style.display = 'none';
   document.getElementById('finalScore').innerText = '';
   document.getElementById('generatePDF').style.display = 'none';
@@ -437,7 +443,7 @@ document.getElementById('generatePDF').addEventListener('click', ()=>{
   doc.save(`${studentName.replace(/\s+/g,'_')}_SimplexKKT.pdf`);
 });
 
-// inicializa
+// inicializa formulário padrão
 generateForm();
 </script>
 </body>
