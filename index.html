@@ -51,6 +51,7 @@
   </div>
 
   <div id="dynamicForm" style="margin-top:12px"></div>
+
   <div class="note">Observação: as restrições <b>xᵢ ≥ 0</b> são implícitas.</div>
   
   <div style="margin-top:12px">
@@ -68,203 +69,322 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-// ================= UTIL =================
+// util
 function numFrom(id,fallback=0){ const el=document.getElementById(id); if(!el) return fallback; const v=parseFloat(el.value); return Number.isFinite(v)?v:fallback; }
 function fmt(x){ return (Math.abs(x)<1e-12)?'0':Number(x).toFixed(6); }
 
-// ================= VARIÁVEIS =================
-let n=2, m=1;
-let varNames = [], base = [], A=[], b=[], autoIterations=[], currentIter=0, score=0, totalChecks=0, studentName='', crossInputs={};
+// variáveis globais
+let n = 2, m = 1;
+const varNames = [];
+let base = [];
+let A=[], b=[], autoIterations=[];
+let currentIter=0, score=0, totalChecks=0;
+let studentName='';
+let crossInputs = {};
 
-// ================= FUNÇÕES =================
-
-// Gera nomes de variáveis: x1..xn, x_{n+1}..x_{n+m} (folgas), y1..yn, y_{n+1}..y_{n+m}
+// --- nomes de variáveis: x1..xn (originais), x_{n+1}..x_{n+m} (folgas), y1..yn, y_{n+1}..y_{n+m}
 function buildVarNames(n,m){
-  const names=[];
+  const names = [];
   for(let i=1;i<=n;i++) names.push('x'+i);
-  for(let k=1;k<=m;k++) names.push('x'+(n+k)); // slack
+  for(let k=1;k<=m;k++) names.push('x'+(n+k)); // folgas
   for(let i=1;i<=n;i++) names.push('y'+i);
   for(let k=1;k<=m;k++) names.push('y'+(n+k));
   return names;
 }
 
-// Gera formulário dinâmico
+// gera formulário dinâmico
 function generateForm(){
   n = Math.max(1, Math.floor(numFrom('input_n',2)));
   m = Math.max(1, Math.floor(numFrom('input_m',1)));
   const container = document.getElementById('dynamicForm');
   container.innerHTML = '';
 
-  // FO Card
-  const foCard = document.createElement('div'); foCard.className='card';
-  foCard.innerHTML=`<div class="small"><strong>Função objetivo (maximizar) — termos quadráticos e lineares</strong></div>`;
-  const grid = document.createElement('div'); grid.className='grid';
+  // Função objetivo inputs
+  const foCard = document.createElement('div');
+  foCard.className = 'card';
+  foCard.innerHTML = `<div class="small"><strong>Função objetivo (maximizar) — termos quadráticos e lineares</strong></div>`;
+  const grid = document.createElement('div');
+  grid.className = 'grid';
 
-  // termos quadráticos
   for(let i=1;i<=n;i++){
-    const id=`c_x${i}sq`;
-    const div=document.createElement('div');
-    div.innerHTML=`<label>coef x${i}²: <input id="${id}" type="number" step="any" value="-1"></label>`;
+    const id = `c_x${i}sq`;
+    const div = document.createElement('div');
+    div.innerHTML = `<label>coef x${i}²: <input id="${id}" type="number" step="any" value="-1"></label>`;
     grid.appendChild(div);
   }
 
-  // termos cruzados
-  crossInputs={};
+  crossInputs = {};
   for(let i=1;i<=n;i++){
     for(let j=i+1;j<=n;j++){
-      const id=`c_x${i}x${j}`;
-      crossInputs[id]=id;
-      const div=document.createElement('div');
-      div.innerHTML=`<label>coef x${i}x${j}: <input id="${id}" type="number" step="any" value="0"></label>`;
+      const id = `c_x${i}x${j}`;
+      crossInputs[id] = id;
+      const div = document.createElement('div');
+      div.innerHTML = `<label>coef x${i}x${j}: <input id="${id}" type="number" step="any" value="0"></label>`;
       grid.appendChild(div);
     }
   }
 
-  // termos lineares
   for(let i=1;i<=n;i++){
-    const id=`c_x${i}`;
-    const div=document.createElement('div');
-    div.innerHTML=`<label>coef x${i}: <input id="${id}" type="number" step="any" value="6"></label>`;
+    const id = `c_x${i}`;
+    const div = document.createElement('div');
+    div.innerHTML = `<label>coef x${i}: <input id="${id}" type="number" step="any" value="6"></label>`;
     grid.appendChild(div);
   }
 
-  foCard.appendChild(grid); container.appendChild(foCard);
+  foCard.appendChild(grid);
+  container.appendChild(foCard);
 
-  // Restrições
-  const restrCard=document.createElement('div'); restrCard.className='card';
-  restrCard.innerHTML=`<div class="small"><strong>Restrições lineares (≤)</strong></div>`;
-  const tbl=document.createElement('table');
-  let thead=`<tr><th>Restrição</th>`;
-  for(let j=1;j<=n;j++) thead+=`<th>a${j}</th>`;
-  tbl.innerHTML=thead+='<th>b</th></tr>';
-
+  // restrições
+  const restrCard = document.createElement('div');
+  restrCard.className = 'card';
+  restrCard.innerHTML = `<div class="small"><strong>Restrições lineares (≤)</strong></div>`;
+  const tbl = document.createElement('table');
+  let thead = `<tr><th>Restrição</th>`;
+  for(let j=1;j<=n;j++) thead += `<th>a${j}</th>`;
+  thead += `<th>b</th></tr>`;
+  tbl.innerHTML = thead;
   for(let k=1;k<=m;k++){
-    const tr=document.createElement('tr');
-    let rowHtml=`<td>r${k}</td>`;
+    const tr = document.createElement('tr');
+    let rowHtml = `<td>r${k}</td>`;
     for(let j=1;j<=n;j++){
-      rowHtml+=`<td><input id="a_${k}_${j}" type="number" step="any" value="${(j===1 && k===1?2:(j===k?1:0))}"></td>`;
+      rowHtml += `<td><input id="a_${k}_${j}" type="number" step="any" value="${(j===k?1: (j===1 && k===1?2:0))}"></td>`;
     }
-    rowHtml+=`<td><input id="b_${k}" type="number" step="any" value="${k===1?8:0}"></td>`;
-    tr.innerHTML=rowHtml; tbl.appendChild(tr);
+    rowHtml += `<td><input id="b_${k}" type="number" step="any" value="${(k===1?8:0)}"></td>`;
+    tr.innerHTML = rowHtml;
+    tbl.appendChild(tr);
   }
-  restrCard.appendChild(tbl); container.appendChild(restrCard);
+  restrCard.appendChild(tbl);
+  container.appendChild(restrCard);
+
+  const note = document.createElement('div');
+  note.className = 'note';
+  note.innerHTML = 'Observação: as restrições xᵢ ≥ 0 são implícitas.';
+  container.appendChild(note);
 }
 
-// Monta problema KKT
+// monta problema
 function montarProblema(){
-  const c_x=new Array(n+1).fill(0), c_x_sq=new Array(n+1).fill(0), c_cross={};
-  for(let i=1;i<=n;i++){ c_x[i]=numFrom(`c_x${i}`,0); c_x_sq[i]=numFrom(`c_x${i}sq`,0);}
-  for(let i=1;i<=n;i++){ for(let j=i+1;j<=n;j++){ const id=`c_x${i}x${j}`; c_cross[`${i}_${j}`]=numFrom(id,0); } }
-  const a=Array.from({length:m+1},()=>new Array(n+1).fill(0)), bvec=new Array(m+1).fill(0);
-  for(let k=1;k<=m;k++){ for(let j=1;j<=n;j++) a[k][j]=numFrom(`a_${k}_${j}`,0); bvec[k]=numFrom(`b_${k}`,0);}
-  
-  varNames = buildVarNames(n,m);
-  base=[]; for(let k=1;k<=m;k++) base.push('x'+(n+k)); for(let i=1;i<=n;i++) base.push('y'+i);
+  const c_x = new Array(n+1).fill(0);
+  const c_x_sq = new Array(n+1).fill(0);
+  const c_cross = {};
 
-  const rows=n+m, cols=2*(n+m);
-  A=Array.from({length:rows},()=>new Array(cols).fill(0));
-  b=new Array(rows).fill(0);
-  const off_x=0, off_s=n, off_y1=n+m, off_y2=n+m+n;
-
-  // restrições primais
-  for(let k=1;k<=m;k++){
-    const r=k-1;
-    for(let j=1;j<=n;j++) A[r][off_x+(j-1)]=a[k][j];
-    A[r][off_s+(k-1)]=1;
-    b[r]=bvec[k];
-  }
-
-  // estacionaridade
   for(let i=1;i<=n;i++){
-    const r=m+(i-1);
-    for(let j=1;j<=n;j++){
-      if(i===j) A[r][off_x+(j-1)]=2*c_x_sq[i];
-      else { const key=i<j?`${i}_${j}`:`${j}_${i}`; A[r][off_x+(j-1)]=c_cross[key]||0;}
-    }
-    A[r][off_y1+(i-1)]=1;
-    for(let k=1;k<=m;k++) A[r][off_y2+(k-1)]=-a[k][i];
-    b[r]=-c_x[i];
+    c_x[i] = numFrom(`c_x${i}`, 0);
+    c_x_sq[i] = numFrom(`c_x${i}sq`, 0);
   }
+  for(let i=1;i<=n;i++){
+    for(let j=i+1;j<=n;j++){
+      const id = `c_x${i}x${j}`;
+      c_cross[`${i}_${j}`] = numFrom(id,0);
+    }
+  }
+
+  const a = Array.from({length: m+1}, ()=> new Array(n+1).fill(0));
+  const bvec = new Array(m+1).fill(0);
+  for(let k=1;k<=m;k++){
+    for(let j=1;j<=n;j++){
+      a[k][j] = numFrom(`a_${k}_${j}`,0);
+    }
+    bvec[k] = numFrom(`b_${k}`,0);
+  }
+
+  const names = buildVarNames(n,m);
+  window._varNamesArr = names.slice();
+
+  base = [];
+  for(let k=1;k<=m;k++) base.push('x'+(n+k));
+  for(let i=1;i<=n;i++) base.push('y'+i);
+
+  const rows = n + m;
+  const cols = 2*(n + m);
+  A = Array.from({length: rows}, ()=> new Array(cols).fill(0));
+  b = new Array(rows).fill(0);
+
+  const off_x = 0;
+  const off_s = n;
+  const off_y1 = n + m;
+  const off_y2 = n + m + n;
+
+  for(let k=1;k<=m;k++){
+    const r = k-1;
+    for(let j=1;j<=n;j++){
+      A[r][off_x + (j-1)] = a[k][j];
+    }
+    A[r][off_s + (k-1)] = 1;
+    b[r] = bvec[k];
+  }
+
+  for(let i=1;i<=n;i++){
+    const r = m + (i-1);
+    for(let j=1;j<=n;j++){
+      if(i===j) A[r][off_x + (j-1)] = 2 * c_x_sq[i];
+      else{
+        const key = (i<j)? `${i}_${j}`:`${j}_${i}`;
+        A[r][off_x + (j-1)] = c_cross[key] || 0;
+      }
+    }
+    A[r][off_y1 + (i-1)] = 1;
+    for(let k=1;k<=m;k++){
+      A[r][off_y2 + (k-1)] = -a[k][i];
+    }
+    b[r] = -c_x[i];
+  }
+
+  return {A,b};
 }
 
-// Salva iteração automática
-function saveAutoIteration(){ autoIterations.push({ base:base.slice(), A:A.map(r=>r.slice()), b:b.slice() }); }
+// pivot e KKT
+function saveAutoIteration(){ autoIterations.push({ base: base.slice(), A: A.map(r=>r.slice()), b: b.slice() }); }
 
-// Pivot KKT
 function pivot(row,col){
-  const pv=A[row][col]; if(Math.abs(pv)<1e-12) return;
+  const pv = A[row][col]; if(Math.abs(pv)<1e-12) return;
   for(let j=0;j<A[row].length;j++) A[row][j]/=pv;
   b[row]/=pv;
-  for(let i=0;i<A.length;i++){ if(i===row) continue; const factor=A[i][col]; for(let j=0;j<A[i].length;j++) A[i][j]-=factor*A[row][j]; b[i]-=factor*b[row];}
-  base[row]=varNames[col]; saveAutoIteration();
+  for(let i=0;i<A.length;i++){
+    if(i===row) continue;
+    const factor = A[i][col];
+    for(let j=0;j<A[i].length;j++) A[i][j]-=factor*A[row][j];
+    b[i]-=factor*b[row];
+  }
+  base[row] = window._varNamesArr[col];
+  saveAutoIteration();
 }
 
-// Escolhe variável a entrar
 function enteringVar(){
-  let minVal=0,row=-1;
-  for(let i=0;i<b.length;i++){ if(b[i]<minVal){ minVal=b[i]; row=i; } }
+  let minVal=0, row=-1;
+  for(let i=0;i<b.length;i++){
+    if(b[i]<minVal){ minVal=b[i]; row=i; }
+  }
   if(row===-1) return null;
-  const leaveVar=base[row], enterVar=leaveVar.startsWith('x')?'y'+leaveVar.slice(1):'x'+leaveVar.slice(1);
-  const col=varNames.indexOf(enterVar);
-  return {row,col};
+  const leaveVar = base[row];
+  const enterVar = leaveVar.startsWith('x') ? 'y'+leaveVar.slice(1) : 'x'+leaveVar.slice(1);
+  const col = window._varNamesArr.indexOf(enterVar);
+  return { row, col };
 }
 
-// Verifica se ótimo
-function isOptimal(){ return b.every(v=>v>=-1e-9); }
+function isOptimal(){ return b.every(v => v>=-1e-9); }
 
-// Resolve automaticamente
 function solveAutomatic(){
   montarProblema();
   autoIterations=[]; saveAutoIteration();
   let safety=0;
   while(!isOptimal() && safety<200){
-    const pv=enteringVar(); if(!pv||pv.col<0) break;
-    pivot(pv.row,pv.col); safety++;
+    const pv = enteringVar();
+    if(!pv || pv.col<0) break;
+    pivot(pv.row, pv.col);
+    safety++;
   }
 }
 
-// Renderiza iteração para o aluno
+// render e verificação
 function renderStudentIteration(idx){
-  const area=document.getElementById('iterationsArea'); area.style.display='block'; area.innerHTML='';
+  const area = document.getElementById('iterationsArea');
+  area.style.display='block';
+  area.innerHTML='';
+
   if(idx>0){
-    const prev=autoIterations[idx-1];
-    const tblPrev=document.createElement('table'); tblPrev.className='prevTable';
+    const prev = autoIterations[idx-1];
+    const tblPrev=document.createElement('table');
+    tblPrev.className='prevTable';
     tblPrev.innerHTML=`<caption>Iteração ${idx} (anterior - referência)</caption>`;
-    let trh=document.createElement('tr'); trh.innerHTML='<th>Base</th>'+varNames.map(v=>`<th>${v}</th>`).join('')+'<th>b</th>'; tblPrev.appendChild(trh);
+    let trh=document.createElement('tr');
+    trh.innerHTML='<th>Base</th>'+window._varNamesArr.map(v=>`<th>${v}</th>`).join('')+'<th>b</th>';
+    tblPrev.appendChild(trh);
     for(let r=0;r<prev.base.length;r++){
-      const tr=document.createElement('tr'); let rowHtml=`<td><input type="text" value="${prev.base[r]}" readonly></td>`;
-      for(let j=0;j<varNames.length;j++) rowHtml+=`<td><input type="text" value="${fmt(prev.A[r][j])}" readonly></td>`;
-      rowHtml+=`<td><input type="text" value="${fmt(prev.b[r])}" readonly></td>`; tr.innerHTML=rowHtml; tblPrev.appendChild(tr);
+      const tr=document.createElement('tr');
+      let rowHtml=`<td><input type="text" value="${prev.base[r]}" readonly></td>`;
+      for(let j=0;j<window._varNamesArr.length;j++){
+        rowHtml+=`<td><input type="text" value="${fmt(prev.A[r][j])}" readonly></td>`;
+      }
+      rowHtml+=`<td><input type="text" value="${fmt(prev.b[r])}" readonly></td>`;
+      tr.innerHTML=rowHtml;
+      tblPrev.appendChild(tr);
     }
     area.appendChild(tblPrev);
   }
 
-  const it=autoIterations[idx]; const tbl=document.createElement('table'); tbl.innerHTML=`<caption>Iteração ${idx+1} (preencha os valores)</caption>`;
-  let trh=document.createElement('tr'); trh.innerHTML='<th>Base</th>'+varNames.map(v=>`<th>${v}</th>`).join('')+'<th>b</th>'; tbl.appendChild(trh);
+  const it = autoIterations[idx];
+  const tbl=document.createElement('table');
+  tbl.innerHTML=`<caption>Iteração ${idx+1} (preencha os valores)</caption>`;
+  let trh=document.createElement('tr');
+  trh.innerHTML='<th>Base</th>'+window._varNamesArr.map(v=>`<th>${v}</th>`).join('')+'<th>b</th>';
+  tbl.appendChild(trh);
+
   for(let r=0;r<it.base.length;r++){
-    const tr=document.createElement('tr'); let rowHtml=`<td><input id="base_${r}" type="text" value=""></td>`;
-    for(let j=0;j<varNames.length;j++) rowHtml+=`<td><input id="cell_${r}_${j}" type="text" value=""></td>`;
-    rowHtml+=`<td><input id="b_${r}" type="text" value=""></td>`; tr.innerHTML=rowHtml; tbl.appendChild(tr);
+    const tr=document.createElement('tr');
+    let rowHtml=`<td><input id="base_${r}" type="text" value=""></td>`;
+    for(let j=0;j<window._varNamesArr.length;j++){
+      rowHtml+=`<td><input id="cell_${r}_${j}" type="text" value=""></td>`;
+    }
+    rowHtml+=`<td><input id="b_${r}" type="text" value=""></td>`;
+    tr.innerHTML=rowHtml;
+    tbl.appendChild(tr);
   }
   area.appendChild(tbl);
-  const btn=document.createElement('button'); btn.innerText='Verificar Iteração'; btn.onclick=()=>checkIteration(idx); area.appendChild(btn);
+  const btn=document.createElement('button');
+  btn.innerText='Verificar Iteração';
+  btn.onclick=()=>checkIteration(idx);
+  area.appendChild(btn);
   document.getElementById('restart').style.display='inline-block';
 }
 
-// Verifica iteração
 function checkIteration(idx){
-  const it=autoIterations[idx]; let correct=true;
+  const it=autoIterations[idx];
+  let correct=true;
   for(let r=0;r<it.base.length;r++){
-    const basEl=document.getElementById(`base_${r}`); const valBase=(basEl.value||'').trim(); basEl.classList.remove('incorrect'); if(valBase!==it.base[r]){ basEl.classList.add('incorrect'); correct=false;}
-    for(let j=0;j<varNames.length;j++){
-      const el=document.getElementById(`cell_${r}_${j}`); let raw=(el.value||'').trim(); el.classList.remove('incorrect');
-      let val=NaN; if(raw.includes('/')){ const p=raw.split('/'); val=parseFloat(p[0])/parseFloat(p[1]);} else val=parseFloat(raw.replace(',','.'));
-      if(!Number.isFinite(val)||Math.abs(val-it.A[r][j])>1e-4){ el.classList.add('incorrect'); correct=false;}
+    const basEl=document.getElementById(`base_${r}`);
+    const valBase=(basEl.value||'').trim();
+    basEl.classList.remove('incorrect');
+    if(valBase!==it.base[r]){ basEl.classList.add('incorrect'); correct=false; }
+    for(let j=0;j<window._varNamesArr.length;j++){
+      const el=document.getElementById(`cell_${r}_${j}`);
+      let raw=(el.value||'').trim(); el.classList.remove('incorrect');
+      let val=NaN;
+      if(raw.includes('/')){ const p=raw.split('/'); val=parseFloat(p[0])/parseFloat(p[1]); }
+      else val=parseFloat(raw.replace(',','.'));
+      if(!Number.isFinite(val)||Math.abs(val-it.A[r][j])>1e-4){ el.classList.add('incorrect'); correct=false; }
     }
-    const bEl=document.getElementById(`b_${r}`); let rawb=(bEl.value||'').trim(); bEl.classList.remove('incorrect');
-    let bv=NaN; if(rawb.includes('/')){ const p=rawb.split('/'); bv=parseFloat(p[0])/parseFloat(p[1]);} else bv=parseFloat(rawb.replace(',','.'));
-    if(!Number.isFinite(bv)||Math.abs(bv-it.b[r])>1e-4){ bEl.classList.add('incorrect'); correct=false;}
+    const bEl=document.getElementById(`b_${r}`);
+    let rawb=(bEl.value||'').trim(); bEl.classList.remove('incorrect');
+    let bv=NaN;
+    if(rawb.includes('/')){ const p=rawb.split('/'); bv=parseFloat(p[0])/parseFloat(p[1]); }
+    else bv=parseFloat(rawb.replace(',','.'));
+    if(!Number.isFinite(bv)||Math.abs(bv-it.b[r])>1e-4){ bEl.classList.add('incorrect'); correct=false; }
   }
-  totalChecks++; const fb=document.getElementById('feedback'); fb.style.display='block';
-  if(correct){ fb.className='status ok'; fb.innerText='✅ Iteração correta!'; currentIter++; if(currentIter<autoIterations.length) renderStudentIteration(currentIter);
-  else { const nota=Math.max(1,Math.round(100*score/totalChecks)); fb.innerText=`✅ Todas as
+  totalChecks++;
+  if(correct) score++;
+  const feedback=document.getElementById('feedback');
+  feedback.style.display='block';
+  feedback.className=correct?'status ok':'status err';
+  feedback.innerText=correct?`Iteração correta!`: `Iteração contém erros.`;
+  if(idx+1<autoIterations.length) currentIter++, renderStudentIteration(currentIter);
+  else{ document.getElementById('generatePDF').style.display='inline-block'; feedback.innerText+=' Fim do exercício.';}
+}
+
+function generatePDFReport(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(12);
+  doc.text(`Aluno: ${studentName}`,10,10);
+  doc.text(`Pontuação: ${score} / ${totalChecks}`,10,18);
+  let y=26;
+  autoIterations.forEach((it,i)=>{
+    doc.text(`Iteração ${i+1}: Base correta: ${it.base.join(', ')}`,10,y); y+=8;
+  });
+  doc.save(`${studentName}_Simplex.pdf`);
+}
+
+// eventos
+document.getElementById('genForm').onclick = generateForm;
+document.getElementById('start').onclick = ()=>{
+  studentName=document.getElementById('studentName').value.trim()||'Aluno';
+  solveAutomatic();
+  currentIter=0; score=0; totalChecks=0;
+  renderStudentIteration(currentIter);
+};
+document.getElementById('restart').onclick = ()=>{ currentIter=0; score=0; totalChecks=0; renderStudentIteration(currentIter); };
+document.getElementById('generatePDF').onclick = generatePDFReport;
+</script>
+
+</body>
+</html>
