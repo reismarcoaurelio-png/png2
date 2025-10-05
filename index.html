@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<title>Simplex KKT - Interativo Funcional</title>
+<title>Simplex KKT - Interativo Corrigido (IDs namespaced)</title>
 <style>
   body { font-family: Arial, Helvetica, sans-serif; padding:18px; background:#f6f9fc; color:#0b2545; }
   h1{margin-bottom:6px;}
@@ -28,16 +28,15 @@
 </head>
 <body>
 
-<h1>Simplex KKT - Quadrático Interativo</h1>
+<h1>Simplex KKT - Quadrático Interativo (corrigido)</h1>
 
 <div class="pane">
   <div class="small"><strong>Instruções rápidas</strong></div>
   <ol class="small">
-    <li>Preencha o Formulário com o seu nome.</li>
-    <li>Escolha número de variáveis (n) e número de restrições (m) e clique em <em>Gerar Formulário</em>.</li>
-    <li>Preencha os coeficientes (função objetivo quadrática: termos quadráticos, cruzados e lineares; e as m restrições). Clique em <em>Iniciar Iterações</em>.</li>
-    <li>No modo exercício, o aluno deverá preencher o próximo tableau usando como referência o tableau anterior e clicar em <em>Verificar Iteração</em>.</li>
-    <li>Ao final de todas iterações, clique em <em>Gerar PDF</em> para gerar o Relatório de Desempenho do Aluno.</li>
+    <li>Preencha Nome, n (variáveis) e m (restrições). Clique em <em>Gerar Formulário</em>.</li>
+    <li>Preencha coeficientes da FO e restrições. Clique em <em>Iniciar Iterações</em>.</li>
+    <li>Use o tableau anterior como referência — preencha apenas a <strong>linha do pivot</strong> indicada e clique em <em>Verificar Iteração</em>.</li>
+    <li>Ao fim, clique em <em>Gerar PDF</em> para baixar o relatório (nota 0–100).</li>
   </ol>
   <hr />
 </div>
@@ -74,254 +73,372 @@ function numFrom(id,fallback=0){ const el=document.getElementById(id); if(!el) r
 function fmt(x){ return (Math.abs(x)<1e-12)?'0':Number(x).toFixed(6); }
 
 // globals
-let n=2,m=1;
+let n=2, m=1;
 let varNames=[];
-let base=[],A=[],b=[],autoIterations=[];
-let currentIter=0,score=0,totalChecks=0;
+let base=[], A=[], b=[], autoIterations=[]; // autoIterations: {base,A,b,pivot}
+let currentIter=0, score=0, totalChecks=0;
 let studentName='';
-let crossInputs={};
-let pivotRow=-1,pivotCol=-1;
 
-// build variable names (x=slack)
+// build var names: x1..xn, x_{n+1}..x_{n+m} (folgas), y1..yn, y_{n+1}..y_{n+m}
 function buildVarNames(n,m){
   const names=[];
   for(let i=1;i<=n;i++) names.push('x'+i);
-  for(let k=1;k<=m;k++) names.push('x'+k); // folga como x1..xm
+  for(let k=1;k<=m;k++) names.push('x'+(n+k)); // folgas como x_{n+1}...
   for(let i=1;i<=n;i++) names.push('y'+i);
   for(let k=1;k<=m;k++) names.push('y'+(n+k));
   return names;
 }
 
-// generate form
+// generate dynamic form
 function generateForm(){
-  n=Math.max(1,Math.floor(numFrom('input_n',2)));
-  m=Math.max(1,Math.floor(numFrom('input_m',1)));
-  const container=document.getElementById('dynamicForm'); container.innerHTML='';
+  n = Math.max(1, Math.floor(numFrom('input_n',2)));
+  m = Math.max(1, Math.floor(numFrom('input_m',1)));
+  const container = document.getElementById('dynamicForm');
+  container.innerHTML = '';
 
   // FO
-  const foCard=document.createElement('div');
-  foCard.className='card';
-  foCard.innerHTML=`<div class="small"><strong>Função objetivo (maximizar) — termos quadráticos e lineares</strong></div>`;
-  const grid=document.createElement('div'); grid.className='grid';
+  const foCard = document.createElement('div'); foCard.className = 'card';
+  foCard.innerHTML = `<div class="small"><strong>Função objetivo (maximizar) — termos quadráticos e lineares</strong></div>`;
+  const grid = document.createElement('div'); grid.className = 'grid';
 
-  // quadratics
   for(let i=1;i<=n;i++){
-    const id=`c_x${i}sq`;
-    const div=document.createElement('div');
-    div.innerHTML=`<label>coef x${i}²: <input id="${id}" type="number" step="any" value="-1"></label>`;
+    const id = `c_x${i}sq`;
+    const div = document.createElement('div');
+    div.innerHTML = `<label>coef x${i}²: <input id="${id}" type="number" step="any" value="-1"></label>`;
     grid.appendChild(div);
   }
 
-  // cross terms
-  crossInputs={};
-  for(let i=1;i<=n;i++) for(let j=i+1;j<=n;j++){
-    const id=`c_x${i}x${j}`;
-    crossInputs[id]=id;
-    const div=document.createElement('div');
-    div.innerHTML=`<label>coef x${i}x${j}: <input id="${id}" type="number" step="any" value="0"></label>`;
-    grid.appendChild(div);
+  for(let i=1;i<=n;i++){
+    for(let j=i+1;j<=n;j++){
+      const id = `c_x${i}x${j}`;
+      const div = document.createElement('div');
+      div.innerHTML = `<label>coef x${i}x${j}: <input id="${id}" type="number" step="any" value="0"></label>`;
+      grid.appendChild(div);
+    }
   }
 
-  // linear terms
   for(let i=1;i<=n;i++){
-    const id=`c_x${i}`;
-    const div=document.createElement('div');
-    div.innerHTML=`<label>coef x${i}: <input id="${id}" type="number" step="any" value="6"></label>`;
+    const id = `c_x${i}`;
+    const div = document.createElement('div');
+    div.innerHTML = `<label>coef x${i}: <input id="${id}" type="number" step="any" value="6"></label>`;
     grid.appendChild(div);
   }
 
   foCard.appendChild(grid);
   container.appendChild(foCard);
 
-  // restrições
-  const restrCard=document.createElement('div'); restrCard.className='card';
-  restrCard.innerHTML=`<div class="small"><strong>Restrições lineares (≤)</strong></div>`;
-  const tbl=document.createElement('table');
-  let thead=`<tr><th>Restrição</th>`;
-  for(let j=1;j<=n;j++) thead+=`<th>a${j}</th>`; thead+=`<th>b</th></tr>`;
-  tbl.innerHTML=thead;
+  // restraints
+  const restrCard = document.createElement('div'); restrCard.className = 'card';
+  restrCard.innerHTML = `<div class="small"><strong>Restrições lineares (≤)</strong></div>`;
+  const tbl = document.createElement('table');
+  let thead = `<tr><th>Restrição</th>`;
+  for(let j=1;j<=n;j++) thead += `<th>a${j}</th>`;
+  thead += `<th>b</th></tr>`;
+  tbl.innerHTML = thead;
 
   for(let k=1;k<=m;k++){
-    const tr=document.createElement('tr');
-    let rowHtml=`<td>r${k}</td>`;
-    for(let j=1;j<=n;j++) rowHtml+=`<td><input id="a_${k}_${j}" type="number" step="any" value="${(j===k?1: (j===1 && k===1?2:0))}"></td>`;
-    rowHtml+=`<td><input id="b_${k}" type="number" step="any" value="${(k===1?8:0)}"></td>`;
-    tr.innerHTML=rowHtml; tbl.appendChild(tr);
+    const tr = document.createElement('tr');
+    let rowHtml = `<td>r${k}</td>`;
+    for(let j=1;j<=n;j++){
+      rowHtml += `<td><input id="a_${k}_${j}" type="number" step="any" value="${(j===k?1: (j===1 && k===1?2:0))}"></td>`;
+    }
+    rowHtml += `<td><input id="b_${k}" type="number" step="any" value="${(k===1?8:0)}"></td>`;
+    tr.innerHTML = rowHtml;
+    tbl.appendChild(tr);
   }
+  restrCard.appendChild(tbl);
+  container.appendChild(restrCard);
 
-  restrCard.appendChild(tbl); container.appendChild(restrCard);
-  const note=document.createElement('div'); note.className='note'; note.innerHTML='Observação: as restrições xᵢ ≥ 0 são implícitas.';
+  const note = document.createElement('div'); note.className='note';
+  note.innerHTML = 'Observação: as restrições xᵢ ≥ 0 são implícitas.';
   container.appendChild(note);
 }
 
-// montar problema
+// montar problema -> constrói A e b KKT
 function montarProblema(){
-  const c_x=new Array(n+1).fill(0);
-  const c_x_sq=new Array(n+1).fill(0);
-  const c_cross={};
-  for(let i=1;i<=n;i++){ c_x[i]=numFrom(`c_x${i}`); c_x_sq[i]=numFrom(`c_x${i}sq`); }
-  for(let i=1;i<=n;i++) for(let j=i+1;j<=n;j++){ c_cross[`${i}_${j}`]=numFrom(`c_x${i}x${j}`); }
+  const c_x = new Array(n+1).fill(0);
+  const c_x_sq = new Array(n+1).fill(0);
+  const c_cross = {};
+  for(let i=1;i<=n;i++){ c_x[i]=numFrom(`c_x${i}`,0); c_x_sq[i]=numFrom(`c_x${i}sq`,0); }
+  for(let i=1;i<=n;i++) for(let j=i+1;j<=n;j++) c_cross[`${i}_${j}`]=numFrom(`c_x${i}x${j}`,0);
 
-  const a=Array.from({length:m+1},()=>new Array(n+1).fill(0));
-  const bvec=new Array(m+1).fill(0);
+  const a = Array.from({length:m+1}, ()=> new Array(n+1).fill(0));
+  const bvec = new Array(m+1).fill(0);
   for(let k=1;k<=m;k++){
-    for(let j=1;j<=n;j++) a[k][j]=numFrom(`a_${k}_${j}`);
-    bvec[k]=numFrom(`b_${k}`);
+    for(let j=1;j<=n;j++) a[k][j] = numFrom(`a_${k}_${j}`,0);
+    bvec[k] = numFrom(`b_${k}`,0);
   }
 
-  varNames=buildVarNames(n,m);
-  base=[];
-  for(let k=1;k<=m;k++) base.push('x'+k); // folga
+  varNames = buildVarNames(n,m);
+
+  base = [];
+  for(let k=1;k<=m;k++) base.push('x'+(n+k)); // folgas: x_{n+1}...
   for(let i=1;i<=n;i++) base.push('y'+i);
 
-  const rows=n+m, cols=2*(n+m);
-  A=Array.from({length:rows},()=>new Array(cols).fill(0)); b=new Array(rows).fill(0);
-  const off_x=0, off_s=n, off_y1=n+m, off_y2=n+m+n;
+  const rows = n + m;
+  const cols = 2*(n + m);
+  A = Array.from({length: rows}, ()=> new Array(cols).fill(0));
+  b = new Array(rows).fill(0);
 
+  const off_x = 0;
+  const off_s = n;
+  const off_y1 = n + m;
+  const off_y2 = n + m + n;
+
+  // primeiras m linhas: restrições primais
   for(let k=1;k<=m;k++){
-    const r=k-1;
-    for(let j=1;j<=n;j++) A[r][off_x+(j-1)]=a[k][j];
-    A[r][off_s+(k-1)]=1; b[r]=bvec[k];
+    const r = k-1;
+    for(let j=1;j<=n;j++) A[r][off_x + (j-1)] = a[k][j];
+    A[r][off_s + (k-1)] = 1;
+    b[r] = bvec[k];
   }
 
+  // próximas n linhas: estacionaridade
   for(let i=1;i<=n;i++){
-    const r=m+(i-1);
+    const r = m + (i-1);
     for(let j=1;j<=n;j++){
-      if(i===j) A[r][off_x+(j-1)]=2*c_x_sq[i];
-      else { const key=i<j?`${i}_${j}`:`${j}_${i}`; A[r][off_x+(j-1)]=c_cross[key]||0; }
+      if(i===j) A[r][off_x + (j-1)] = 2 * c_x_sq[i];
+      else {
+        const key = (i<j) ? `${i}_${j}` : `${j}_${i}`;
+        A[r][off_x + (j-1)] = c_cross[key] || 0;
+      }
     }
-    A[r][off_y1+(i-1)]=1;
-    for(let k=1;k<=m;k++) A[r][off_y2+(k-1)]=-a[k][i];
-    b[r]=-c_x[i];
+    A[r][off_y1 + (i-1)] = 1;
+    for(let k=1;k<=m;k++) A[r][off_y2 + (k-1)] = -a[k][i];
+    b[r] = -c_x[i];
   }
 
   return {A,b};
 }
 
-function saveAutoIteration(){ autoIterations.push({ base: base.slice(), A: A.map(r=>r.slice()), b: b.slice() }); }
+// save iter with pivot info
+function saveAutoIteration(pivotInfo=null){
+  autoIterations.push({
+    base: base.slice(),
+    A: A.map(r=>r.slice()),
+    b: b.slice(),
+    pivot: pivotInfo
+  });
+}
 
+// pivot
 function pivot(row,col){
-  pivotRow=row; pivotCol=col;
-  const pv=A[row][col]; if(Math.abs(pv)<1e-12) return;
-  for(let j=0;j<A[row].length;j++) A[row][j]/=pv;
-  b[row]/=pv;
+  const pv = A[row][col]; if(Math.abs(pv) < 1e-12) return;
+  for(let j=0;j<A[row].length;j++) A[row][j] /= pv;
+  b[row] /= pv;
   for(let i=0;i<A.length;i++){
     if(i===row) continue;
-    const f=A[i][col];
-    for(let j=0;j<A[i].length;j++) A[i][j]-=f*A[row][j];
-    b[i]-=f*b[row];
+    const factor = A[i][col];
+    for(let j=0;j<A[i].length;j++) A[i][j] -= factor * A[row][j];
+    b[i] -= factor * b[row];
   }
-  base[row]=varNames[col];
-  saveAutoIteration();
+  base[row] = varNames[col];
+  saveAutoIteration({row: row, col: col});
 }
 
+// entering variable (mesma lógica)
 function enteringVar(){
-  let minVal=0,row=-1;
-  for(let i=0;i<b.length;i++){ if(b[i]<minVal){minVal=b[i]; row=i; } }
-  if(row===-1) return null;
-  const leaveVar=base[row]; 
-  const enterVar=leaveVar.startsWith('x') ? 'y'+leaveVar.slice(1) : 'x'+leaveVar.slice(1);
-  const col=varNames.indexOf(enterVar);
-  return {row,col};
+  let minVal = 0, row = -1;
+  for(let i=0;i<b.length;i++){
+    if(b[i] < minVal){ minVal = b[i]; row = i; }
+  }
+  if(row === -1) return null;
+  const leaveVar = base[row];
+  const enterVar = leaveVar.startsWith('x') ? 'y'+leaveVar.slice(1) : 'x'+leaveVar.slice(1);
+  const col = varNames.indexOf(enterVar);
+  return { row, col };
 }
 
-function isOptimal(){ return b.every(v=>v>=-1e-9); }
+function isOptimal(){ return b.every(v => v >= -1e-9); }
 
+// solve automatic
 function solveAutomatic(){
-  montarProblema(); autoIterations=[]; saveAutoIteration();
-  let safety=0;
-  while(!isOptimal() && safety<200){
-    const pv=enteringVar(); if(!pv || pv.col<0) break;
-    pivot(pv.row,pv.col); safety++;
+  montarProblema();
+  autoIterations = [];
+  saveAutoIteration(null); // initial
+  let safety = 0;
+  while(!isOptimal() && safety < 200){
+    const pv = enteringVar(); if(!pv || pv.col < 0) break;
+    pivot(pv.row, pv.col); safety++;
   }
 }
 
+// RENDER: anterior (read-only) + atual (apenas linha do pivot editável)
+// ATENÇÃO: ids de inputs desta área são namespaced com "iter_..." para NÃO conflitar com dynamicForm
 function renderStudentIteration(idx){
-  const area=document.getElementById('iterationsArea'); area.style.display='block'; area.innerHTML='';
-  if(idx>0){
-    const prev=autoIterations[idx-1];
-    const tblPrev=document.createElement('table'); tblPrev.className='prevTable';
-    tblPrev.innerHTML=`<caption>Iteração ${idx} (anterior - referência)</caption>`;
-    let trh=document.createElement('tr');
-    trh.innerHTML='<th>Base</th>'+varNames.map(v=>`<th>${v}</th>`).join('')+'<th>b</th>'; tblPrev.appendChild(trh);
-    for(let r=0;r<prev.base.length;r++){
-      const tr=document.createElement('tr'); let rowHtml=`<td><input type="text" value="${prev.base[r]}" readonly></td>`;
-      for(let j=0;j<varNames.length;j++) rowHtml+=`<td><input type="text" value="${fmt(prev.A[r][j])}" readonly></td>`;
-      rowHtml+=`<td><input type="text" value="${fmt(prev.b[r])}" readonly></td>`; tr.innerHTML=rowHtml; tblPrev.appendChild(tr);
-    }
-    area.appendChild(tblPrev);
+  const area = document.getElementById('iterationsArea');
+  area.style.display = 'block';
+  area.innerHTML = '';
+
+  if(idx <= 0 || idx >= autoIterations.length){
+    area.innerHTML = '<div class="note">Nada a preencher (problema já ótimo ou sem pivôs).</div>';
+    return;
   }
 
-  const it=autoIterations[idx];
-  const tbl=document.createElement('table'); tbl.innerHTML=`<caption>Iteração ${idx+1} (preencha os valores)</caption>`;
-  let trh=document.createElement('tr'); trh.innerHTML='<th>Base</th>'+varNames.map(v=>`<th>${v}</th>`).join('')+'<th>b</th>'; tbl.appendChild(trh);
+  const prev = autoIterations[idx-1];
+  const curr = autoIterations[idx];
+  const pivotInfo = curr.pivot;
+  const pRow = pivotInfo ? pivotInfo.row : null;
 
-  for(let r=0;r<it.base.length;r++){
-    const tr=document.createElement('tr'); let rowHtml=`<td><input id="base_${r}" type="text" value=""></td>`;
+  // tabela anterior (read-only)
+  const tblPrev = document.createElement('table'); tblPrev.className = 'prevTable';
+  tblPrev.innerHTML = `<caption>Iteração ${idx} (anterior - referência)</caption>`;
+  let trh = document.createElement('tr');
+  trh.innerHTML = '<th>Base</th>' + varNames.map(v=>`<th>${v}</th>`).join('') + '<th>b</th>';
+  tblPrev.appendChild(trh);
+  for(let r=0;r<prev.base.length;r++){
+    const tr = document.createElement('tr');
+    let rowHtml = `<td><input type="text" value="${prev.base[r]}" readonly></td>`;
+    for(let j=0;j<varNames.length;j++) rowHtml += `<td><input type="text" value="${fmt(prev.A[r][j])}" readonly></td>`;
+    rowHtml += `<td><input type="text" value="${fmt(prev.b[r])}" readonly></td>`;
+    tr.innerHTML = rowHtml;
+    tblPrev.appendChild(tr);
+  }
+  area.appendChild(tblPrev);
+
+  // tabela atual (aluno preenche apenas linha pRow)
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<caption>Iteração ${idx+1} (preencha somente a linha do pivot indicada)</caption>`;
+  trh = document.createElement('tr');
+  trh.innerHTML = '<th>Base</th>' + varNames.map(v=>`<th>${v}</th>`).join('') + '<th>b</th>';
+  tbl.appendChild(trh);
+  for(let r=0;r<curr.base.length;r++){
+    const tr = document.createElement('tr');
+    let rowHtml = `<td><input id="iter_base_${r}" type="text" value=""></td>`;
     for(let j=0;j<varNames.length;j++){
-      if(r===pivotRow){ rowHtml+=`<td><input id="cell_${r}_${j}" type="text" value=""></td>`; }
-      else rowHtml+=`<td><input type="text" value="${fmt(it.A[r][j])}" readonly></td>`;
+      if(r === pRow){
+        rowHtml += `<td><input id="iter_cell_${r}_${j}" type="text" value=""></td>`;
+      } else {
+        rowHtml += `<td><input type="text" value="${fmt(curr.A[r][j])}" readonly></td>`;
+      }
     }
-    rowHtml+=`<td><input id="b_${r}" type="text" value="${r===pivotRow?'':fmt(it.b[r])}" ${r===pivotRow?'':'readonly'}></td>`; tr.innerHTML=rowHtml; tbl.appendChild(tr);
+    if(r === pRow){
+      rowHtml += `<td><input id="iter_b_${r}" type="text" value=""></td>`;
+    } else {
+      rowHtml += `<td><input type="text" value="${fmt(curr.b[r])}" readonly></td>`;
+    }
+    tr.innerHTML = rowHtml;
+    tbl.appendChild(tr);
   }
   area.appendChild(tbl);
-  const btn=document.createElement('button'); btn.innerText='Verificar Iteração'; btn.onclick=()=>checkIteration(idx);
-  area.appendChild(btn); document.getElementById('restart').style.display='inline-block';
+
+  const note = document.createElement('div'); note.className='note';
+  if(pRow === null) note.innerText = 'Nenhum pivot — problema ótimo.';
+  else note.innerText = `Preencha a linha ${pRow+1} (linha do pivot).`;
+  area.appendChild(note);
+
+  const btn = document.createElement('button'); btn.innerText = 'Verificar Iteração';
+  btn.onclick = () => checkIteration(idx);
+  area.appendChild(btn);
+
+  document.getElementById('restart').style.display = 'inline-block';
 }
 
+// checkIteration: compara somente a linha "iter_cell_*" e "iter_b_*" e "iter_base_*"
 function checkIteration(idx){
-  const it=autoIterations[idx]; let correct=true;
-  for(let j=0;j<varNames.length;j++){
-    const el=document.getElementById(`cell_${pivotRow}_${j}`);
-    let raw=(el.value||'').trim(); el.classList.remove('incorrect');
-    let val=NaN;
-    if(raw.includes('/')){ const p=raw.split('/'); val=parseFloat(p[0])/parseFloat(p[1]); }
-    else val=parseFloat(raw.replace(',','.'));
-    if(!Number.isFinite(val) || Math.abs(val-it.A[pivotRow][j])>1e-4){ el.classList.add('incorrect'); correct=false; }
+  if(idx <= 0 || idx >= autoIterations.length) return;
+  const curr = autoIterations[idx];
+  const pivotInfo = curr.pivot;
+  if(!pivotInfo){
+    document.getElementById('feedback').style.display='block';
+    document.getElementById('feedback').className='status ok';
+    document.getElementById('feedback').innerText = 'Nenhum pivot nesta iteração (óptimo).';
+    return;
   }
-  const bEl=document.getElementById(`b_${pivotRow}`); let rawb=(bEl.value||'').trim(); bEl.classList.remove('incorrect');
-  let bv=NaN;
-  if(rawb.includes('/')){ const p=rawb.split('/'); bv=parseFloat(p[0])/parseFloat(p[1]); }
-  else bv=parseFloat(rawb.replace(',','.'));
-  if(!Number.isFinite(bv) || Math.abs(bv-it.b[pivotRow])>1e-4){ bEl.classList.add('incorrect'); correct=false; }
+  const pRow = pivotInfo.row;
+  let correct = true;
 
-  const basEl=document.getElementById(`base_${pivotRow}`); const valBase=(basEl.value||'').trim(); basEl.classList.remove('incorrect');
-  if(valBase!==it.base[pivotRow]){ basEl.classList.add('incorrect'); correct=false; }
+  // base da linha pivot
+  const baseEl = document.getElementById(`iter_base_${pRow}`);
+  const baseVal = (baseEl.value||'').trim();
+  baseEl.classList.remove('incorrect');
+  if(baseVal !== curr.base[pRow]){ baseEl.classList.add('incorrect'); correct = false; }
 
-  totalChecks++; if(correct) score++;
-  const fb=document.getElementById('feedback'); fb.style.display='block';
-  if(correct){
-    fb.className='status ok'; fb.innerText='✅ Iteração correta!';
-    currentIter++;
-    if(currentIter<autoIterations.length) renderStudentIteration(currentIter);
-    else{
-      const nota=Math.max(1,Math.round(100*score/totalChecks));
-      fb.innerText=`✅ Todas as iterações preenchidas. Nota final: ${nota}/100`;
-      document.getElementById('finalScore').innerText=`Aluno: ${studentName} | Nota: ${nota}/100`;
-      document.getElementById('generatePDF').style.display='inline-block';
+  // checa cada coluna da linha pivot
+  for(let j=0;j<varNames.length;j++){
+    const el = document.getElementById(`iter_cell_${pRow}_${j}`);
+    if(!el){ correct = false; continue; }
+    el.classList.remove('incorrect');
+    let raw = (el.value||'').trim();
+    let val = NaN;
+    if(raw.includes('/')){ const p = raw.split('/'); val = parseFloat(p[0]) / parseFloat(p[1]); }
+    else val = parseFloat(raw.replace(',','.'));
+    if(!Number.isFinite(val) || Math.abs(val - curr.A[pRow][j]) > 1e-4){
+      el.classList.add('incorrect'); correct = false;
     }
-  } else fb.className='status err', fb.innerText='❌ Há erros nesta iteração. Revise as células em vermelho.';
+  }
+
+  // checa b do pivot
+  const bEl = document.getElementById(`iter_b_${pRow}`); bEl.classList.remove('incorrect');
+  let rawb = (bEl.value||'').trim();
+  let bv = NaN;
+  if(rawb.includes('/')){ const p = rawb.split('/'); bv = parseFloat(p[0]) / parseFloat(p[1]); }
+  else bv = parseFloat(rawb.replace(',','.'));
+  if(!Number.isFinite(bv) || Math.abs(bv - curr.b[pRow]) > 1e-4){ bEl.classList.add('incorrect'); correct = false; }
+
+  totalChecks++;
+  if(correct) score++;
+
+  const fb = document.getElementById('feedback'); fb.style.display='block';
+  if(correct){
+    fb.className='status ok'; fb.innerText = '✅ Iteração correta!';
+    currentIter++;
+    if(currentIter < autoIterations.length) renderStudentIteration(currentIter);
+    else {
+      const nota = totalChecks ? Math.round(100 * score / totalChecks) : 0;
+      fb.innerText = `✅ Todas as iterações preenchidas. Nota final: ${nota}/100`;
+      document.getElementById('finalScore').innerText = `Nota final: ${nota}/100`;
+      document.getElementById('generatePDF').style.display = 'inline-block';
+    }
+  } else {
+    fb.className='status err'; fb.innerText = '❌ Iteração incorreta. Revise as células em vermelho.';
+  }
 }
 
 // events
-document.getElementById('genForm').onclick=generateForm;
-document.getElementById('start').onclick=()=>{
-  studentName=document.getElementById('studentName').value||'Aluno';
-  montarProblema(); solveAutomatic();
-  currentIter=0; score=0; totalChecks=0;
-  renderStudentIteration(currentIter);
-  document.getElementById('generatePDF').style.display='none';
-};
-document.getElementById('restart').onclick=()=>renderStudentIteration(currentIter);
+document.getElementById('genForm').addEventListener('click', generateForm);
 
-document.getElementById('generatePDF').onclick=()=>{
-  const { jsPDF } = window.jspdf; const doc=new jsPDF();
-  doc.setFontSize(12); doc.text(`Relatório do Aluno: ${studentName}`,10,10);
-  autoIterations.forEach((it,idx)=>{
-    doc.text(`Iteração ${idx+1}`,10,20+idx*10);
-  });
-  doc.save(`${studentName}_Simplex_KKT.pdf`);
-};
+document.getElementById('start').addEventListener('click', ()=>{
+  studentName = document.getElementById('studentName').value.trim() || 'Aluno(a) não informado(a)';
+  montarProblema();
+  solveAutomatic();
+  score = 0; totalChecks = 0;
+  if(autoIterations.length <= 1){
+    document.getElementById('iterationsArea').style.display='block';
+    document.getElementById('iterationsArea').innerHTML = '<div class="note">Problema já ótimo — não há iterações para preencher.</div>';
+    // grade zero (no attempts)
+    document.getElementById('generatePDF').style.display = 'inline-block';
+    return;
+  }
+  currentIter = 1;
+  document.getElementById('feedback').style.display = 'none';
+  document.getElementById('finalScore').innerText = '';
+  document.getElementById('generatePDF').style.display = 'none';
+  renderStudentIteration(currentIter);
+});
+
+document.getElementById('restart').addEventListener('click', ()=>{
+  autoIterations=[]; A=[]; b=[]; base=[]; currentIter=0; score=0; totalChecks=0;
+  document.getElementById('iterationsArea').innerHTML = '';
+  document.getElementById('feedback').style.display='none';
+  document.getElementById('finalScore').innerText='';
+  document.getElementById('restart').style.display='none';
+  document.getElementById('generatePDF').style.display='none';
+});
+
+document.getElementById('generatePDF').addEventListener('click', ()=>{
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.text('Desempenho do Aluno',20,20);
+  doc.setFontSize(12); doc.text(`Nome: ${studentName}`,20,30);
+  doc.text(`Total de verificações: ${totalChecks}`,20,40);
+  const nota = totalChecks ? Math.round(100 * score / totalChecks) : 0;
+  doc.text(`Nota final: ${nota}/100`,20,50);
+  doc.save(`${studentName.replace(/\s+/g,'_')}_SimplexKKT.pdf`);
+});
+
+// inicializa
+generateForm();
 </script>
 </body>
 </html>
